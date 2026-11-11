@@ -337,6 +337,21 @@ type model struct {
 // may hand the turn to any model.
 var deepSeekModel = lazyre.New(`(?i)^deepseek-(v[4-9]|v\d\d|flash|pro|chat|reasoner)`)
 
+// codexAgentTools are the tools Codex's own GPT-6 entries list beside the
+// ones every model gets: the clock (clock.curr_time, clock.sleep) and
+// request_user_input_async. Without them in a model's entry Codex hands
+// that model neither.
+var codexAgentTools = []string{"send_user_message_async", "clock"}
+
+// claudeModel is a model of a Claude subscription (claude/<model>). Codex
+// gives it Codex's subagent tools (spawn_agent, wait_agent, ...), the clock
+// and request_user_input_async only when its entry says multi-agent V2 and
+// lists codexAgentTools; the entry made for a model Codex has none for said
+// neither, so a Claude model had fewer tools than a GPT one. tool_mode stays
+// unset: Claude gets Codex's tools directly, as mcp__magpie__*, not through
+// code mode.
+func claudeModel(id string) bool { return strings.HasPrefix(id, "claude/") }
+
 func deepSeek(id string) bool {
 	if strings.HasPrefix(id, "group/") {
 		return false
@@ -406,8 +421,11 @@ func entriesAt(ms []catalog.Model, after int, effort string) []any {
 		// backend)
 		if v1 && (strings.HasPrefix(m.ID, "codex/") || m.Fast || m.Seals) {
 			e.MultiAgent = "v1"
-		} else if m.AgentsV2 {
+		} else if m.AgentsV2 || claudeModel(m.ID) {
 			e.MultiAgent = "v2"
+		}
+		if claudeModel(m.ID) {
+			e.Tools = slices.Clone(codexAgentTools)
 		}
 		if m.Images {
 			e.Modalities = append(e.Modalities, "image")
